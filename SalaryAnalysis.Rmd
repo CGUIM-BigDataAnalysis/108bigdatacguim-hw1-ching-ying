@@ -1,7 +1,7 @@
 ---
 title: "108-2 大數據分析方法 作業一"
 output: github_document
-author: put your name here
+author: 陳靜穎
 ---
 
 搞不清楚各行各業的薪資差異嗎? 念研究所到底對第一份工作的薪資影響有多大? CP值高嗎? 透過分析**初任人員平均經常性薪資**- （107年）https://data.gov.tw/dataset/6647 （104-105年）http://ipgod.nchc.org.tw/dataset/a17000000j-020066 ，可初步了解台灣近幾年各行各業、各學歷的起薪。
@@ -10,24 +10,48 @@ author: put your name here
 
 ### 資料匯入與處理
 ```{r dataload}
-library(readr)
+library(jsonlite)
 library(dplyr)
+salary107<-fromJSON("107年各教育程度別初任人員每人每月經常性薪資─按大職類分.json")
+salary104<-fromJSON("http://ipgod.nchc.org.tw/dataset/b6f36b72-0c4a-4b60-9254-1904e180ddb1/resource/63ecb4a9-f634-45f4-8b38-684b72cf95ba/download/0df38b73f75962d5468a11942578cce5.json")
+
+salary104$`大職業別` <- salary107$`大職業別`
+#兩份資料row數是一樣的且大職業別欄位內的資料雖有差異但都不影響真正意思，為了方便後面join就用107年的覆蓋掉104年的。
+joinsalary <- inner_join(salary104,salary107,by="大職業別") #將107&104的各職業及教育程度薪資資料join，成立一個新的綜合表格joinsalary
+for (i in grep("—|…",joinsalary)){
+  joinsalary[grep("—|…", joinsalary[,i]),i] <- ""} #一次整理join完的表格中有-符號的資料，將其取代成空字串。
+joinsalary[-2]<-as.data.frame(sapply(joinsalary[-2],as.numeric)) #為了後面計算方便將除了職業別外的薪資欄位全轉成數字。
 
 ```
 
 ### 107年度薪資較104年度薪資高的職業有哪些? 
 ```{r compare103106}
-#這是R Code Chunk
+joinsalary$increase_pc <-joinsalary$`大學-薪資.y`/joinsalary$`大學-薪資.x`#新增一個欄位increase_pc，是提高比例(107/104大學薪資)的值
+pick107higher<-filter(joinsalary,`大學-薪資.y`>`大學-薪資.x`) #篩選出107比104薪資高的
+knitr::kable(pick107higher) #顯示107比104高的職業 
+pick107higher %>% 
+  arrange(desc(pick107higher$increase_pc)) %>% #將提高比例由大到小排序 
+  head(10) #呈現前10筆
+
 ```
+
+就大學畢業的薪資資料來說，成長最主要的領域有傳播及資通服務業、不動產業、藝術休閒業、金融保險和運輸倉儲業。
+而薪資漲幅最高的是科學技術服務業和教育業的服務及銷售人員、不動產業和住宿餐飲業，成長都超過了1.1倍。
+專業、科學及技術服務業包含的範疇很大，主要具有"知識密集"的特性，從這個角度來解讀，對於具備高專業知識人才的需求反應在薪資上，也是十分合理;反倒是我認為發展應該算是比較平穩的教育相關工作竟是第二名讓我比較意外。不過產業的發展與當時社會環境、相關政策的影響關聯也很大，比較難單就此份資料就做出結論。不過，經過三年的時間大部分職業薪資都是肉眼可見的提升了。減少的，程度相比起來也只是一點點的變動。我想最主要的原因還是與最低基本薪資的調整有關。
 
 ### 提高超過5%的的職業有哪些? 
 ```{r over5}
-#這是R Code Chunk
+pickmore5pc <- filter(joinsalary,increase_pc>1.05) #薪資提高超過5%的
+knitr::kable(pickmore5pc)
+ #顯示薪資提高超過5%的職業
 ```
 
 ### 主要的職業種別是哪些種類呢?
 ```{r mainType}
-#這是R Code Chunk
+mainoccupation <- ifelse(grepl("-",pickmore5pc$`大職業別`), 
+                         substr(pickmore5pc$`大職業別`,1,regexpr("-",pickmore5pc$`大職業別`)-1),
+                         pickmore5pc$`大職業別`) #判斷大職業別欄位中是否有"-"符號，若有便執行取出前面字串的動作，若否則取出整串
+table(mainoccupation) #分析出現次數
 ```
 
 ## 男女同工不同酬現況分析
@@ -36,30 +60,70 @@ library(dplyr)
 
 ### 104和107年度的大學畢業薪資資料，哪些行業男生薪資比女生薪資多?
 ```{r male}
-#這是R Code Chunk
+man104 <-arrange(joinsalary,`大學-女/男.x`) %>% #104男生比女生多
+  head(10) %>%  #104年男生比女生多且照差異程度由大到小排序，取前十名(=女/男比率值由小到大排的前十名)
+  select(1:14) #篩選104年度的資料欄位(1~14)
+knitr::kable(man104)
+  
+man107 <-arrange(joinsalary,`大學-女/男.y`) %>%  #107男生比女生多
+  head(10) %>% #107年男生比女生多且照差異程度由大到小排序，取前十名(=女/男比率值由小到大排的前十名)
+  select(2,15:27) #篩選107年度的資料欄位(2,15~27)
+knitr::kable(man107)
 ```
 ### 哪些行業女生薪資比男生薪資多? 
 ```{r female}
-#這是R Code Chunk
+woman104 <-arrange(joinsalary,desc(`大學-女/男.x`))  %>% #104女生比男生多
+  head(10) %>% #104年女生比男生多且照差異程度由大到小排序，取前十名(=女/男比率值由大到小排的前十名)
+  select(1:14) #篩選104年度的資料欄位(1~14)
+knitr::kable(woman104)
+
+woman107 <-arrange(joinsalary,desc(`大學-女/男.y`))%>% #107女生比男生多
+  head(10) %>% #107年女生比男生多且照差異程度由大到小排序，取前十名(=女/男比率值由大到小排的前十名)
+  select(2,15:27) #篩選107年度的資料欄位(2,15~27)
+knitr::kable(woman107)
 ```
+
+104年時女生薪資只有一筆資料(大學女/男=100.26)是大於男生的，到了107年變成零筆。但是相同薪資的比率有增加，從四筆增加到八筆。
+104年時男女薪資差異最大的時候是91.69，到了107年時變成96.02，增長的幅度也不小代表差異也是有在縮減。但直至107年時，140筆資料中仍只有八筆是薪資同等的，足見性別不平等、所謂女性玻璃天花板的現象在職場上還是相當明顯。
 
 ## 研究所薪資差異
 
 以107年度的資料來看，哪個職業別念研究所最划算呢 (研究所學歷薪資與大學學歷薪資增加比例最多)?
  
 ```{r grad}
-#這是R Code Chunk
+joinsalary$increase_pc_grad <- joinsalary$`研究所-薪資`/joinsalary$`大學-薪資.y` #在joinsalary表格中新增一個研所/大學薪資增加比率的欄位叫increase_pc_grad。
+graduate_diff <- select(joinsalary,2,15:27,29) #以107年度來看，所以取2,15~27,29的欄位
+graduate_diff %>%
+  arrange(desc(graduate_diff$increase_pc_grad)) %>% #將增加比率由大到小排序
+  head(10) #呈現前十筆資料
+
 ```
+
+就讀研究所最划算的前三名分別是:其他服務業、專業_科學及技術服務業及其專業人員，其中光是專業_科學及技術服這個產業就占了三分之二，這個產業雖然涵蓋範圍也很大，但其主要是販賣技術上的專業知識，所以有個特性便是很要求"專業知識能力"，有了這個認知再來看這個結果，其對人才的學識能力是有一定程度要求的，因此學歷對薪資的影響程度是相對來說最高的也是十分能夠理解。
 
 ## 我有興趣的職業別薪資狀況分析
 
 ### 有興趣的職業別篩選，呈現薪資
 ```{r like}
-#這是R Code Chunk
+interested_df<-
+  data.frame("職業別"=c(joinsalary$`大職業別`[[78]],joinsalary$`大職業別`[[127]],joinsalary$`大職業別`[[120]],joinsalary$`大職業別`[[113]],joinsalary$`大職業別`[[50]])
+             ,"104大學薪資"=c(joinsalary$`大學-薪資.x`[[78]],joinsalary$`大學-薪資.x`[[127]],joinsalary$`大學-薪資.x`[[120]],joinsalary$`大學-薪資.x`[[113]],joinsalary$`大學-薪資.x`[[50]])
+             ,"104研究所薪資"=c(joinsalary$`研究所及以上-薪資`[[78]],joinsalary$`研究所及以上-薪資`[[127]],joinsalary$`研究所及以上-薪資`[[120]],joinsalary$`研究所及以上-薪資`[[113]],joinsalary$`研究所及以上-薪資`[[50]])
+           ,"107大學薪資"=c(joinsalary$`大學-薪資.y`[[78]],joinsalary$`大學-薪資.y`[[127]],joinsalary$`大學-薪資.y`[[120]],joinsalary$`大學-薪資.y`[[113]],joinsalary$`大學-薪資.y`[[50]])
+           ,"107研究所薪資"=c(joinsalary$`研究所-薪資`[[78]],joinsalary$`研究所-薪資`[[127]],joinsalary$`研究所-薪資`[[120]],joinsalary$`研究所-薪資`[[113]],joinsalary$`研究所-薪資`[[50]]))
+#建立一個dataframe，內容包含有興趣的五個職業類別、大學畢業薪資及研究所畢業薪資。
+knitr::kable(interested_df)
 ```
 
 ### 這些職業別研究所薪資與大學薪資差多少呢？
 ```{r likeGrad}
-#這是R Code Chunk
+interested_df$"104薪資差" <- interested_df$`X104研究所薪資`-interested_df$`X104大學薪資` #新增104年薪資差異的欄位
+interested_df$"107薪資差" <- interested_df$`X107研究所薪資`-interested_df$`X107大學薪資` #新增107年薪資差異的欄位
+knitr::kable(interested_df)
+
 ```
+
+我選擇了以下五個:
+出版、影音製作、傳播及資通訊服務業、藝術_娛樂及休閒服務業、醫療保健業、教育業、服務業	。
+薪資分布狀況與我所預想的並沒有落差太大，資訊和教育及醫療保健相關產業本來就還挺看重學歷的。透過所建的資料框可以清楚比較兩年度兩種學歷的薪資及差距，可以看見資通訊產業讀研究所是相對來說最划算的，這結果也更加支持了我未來選擇繼續讀研究所的動力。
 
